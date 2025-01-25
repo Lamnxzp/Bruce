@@ -501,7 +501,6 @@ void sendSonyCommand(String address, String command) {
 void sendPanasonicCommand(String address, String command) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   uint8_t first_zero_byte_pos = address.indexOf("00", 2);
   if(first_zero_byte_pos!=-1) address = address.substring(0, first_zero_byte_pos);
   // needs to invert endianess
