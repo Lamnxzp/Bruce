@@ -222,39 +222,69 @@ bool processSerialCommand(String cmd_str) {
       return true;
     }
 
-    if(cmd_str.startsWith("ir tx")) {
-      // make sure it is initted
-      gsetIrTxPin(false);
-      //if(bruceConfig.irTx==0) bruceConfig.irTx = LED;  // quickfix init issue? CARDPUTR is 44
+    if (cmd_str.startsWith("ir tx raw")) {
+      // usage: ir tx raw F:<frequency> <samples>
+      
+      int freqIndex = cmd_str.indexOf("f:") + 2;
+      // int dcIndex = cmd_str.indexOf("dc:") + 3;
+      // int samplesIndex = cmd_str.indexOf(' ', dcIndex) + 1;
+      int samplesIndex = cmd_str.indexOf(' ', freqIndex) + 1;
 
-      // ir tx <protocol> <address> <command>
-      // <protocol>: NEC, NECext, NEC42, NEC42ext, Samsung32, RC6, RC5, RC5X, SIRC, SIRC15, SIRC20, Kaseikyo, RCA
-      // <address> and <command> must be in hex format
-      // e.g. ir tx NEC 04000000 08000000
+      if (freqIndex - 2 == -1 /*|| dcIndex - 3 == -1*/ || samplesIndex - 1 == -1) {
+        Serial.println("Missing parameters");
+        return false;
+      }
+
+      int freqEndIndex = cmd_str.indexOf(' ', freqIndex);
+      if (freqEndIndex == -1) freqEndIndex = cmd_str.length();
+      String freqStr = cmd_str.substring(freqIndex, freqEndIndex);
+
+      // int dcEndIndex = cmd_str.indexOf(' ', dcIndex);
+      // if (dcEndIndex == -1) dcEndIndex = cmd_str.length();
+      // String dcStr = cmd_str.substring(dcIndex, dcEndIndex);
+
+      String samplesStr = cmd_str.substring(samplesIndex);
+
+      uint32_t frequency = freqStr.toInt();
+      // uint8_t dutyCycle = dcStr.toFloat();
+
+      if (samplesStr.length() == 0) {
+        Serial.println("Missing data samples");
+        return false;
+      }
+
+      IRCode code;
+      code.type = "raw";
+      code.frequency = frequency;
+      code.data = samplesStr;
+
+      sendIRCommand(&code, true);
+
+      return true;
     }
-    //TODO: if(cmd_str.startsWith("ir tx raw ")){
 
-    if(cmd_str.startsWith("ir tx nec ")){
-       String address = cmd_str.substring(10, 10+8);
-       String command = cmd_str.substring(19, 19+8);
-       sendNECCommand(address, command);  // TODO: add arg for displayRedStripe optional
-       return true;
-      }
-    if(cmd_str.startsWith("ir tx rc5 ")){
-       String address = cmd_str.substring(10, 10+8);
-       String command = cmd_str.substring(19, 19+8);
-       sendRC5Command(address, command);
-       return true;
-      }
-    if(cmd_str.startsWith("ir tx rc6 ")){
-       String address = cmd_str.substring(10, 10+8);
-       String command = cmd_str.substring(19, 19+8);
-       sendRC6Command(address, command);
-       return true;
-      }
-    //if(cmd_str.startsWith("ir tx sirc")){
-    //if(cmd_str.startsWith("ir tx samsung")){
-    //if(cmd_str.startsWith("ir tx raw")){
+    if(cmd_str.startsWith("ir tx")) {
+      // usage: ir tx <protocol> <address without spaces> <command without spaces>
+
+      int addressIndex = cmd_str.indexOf(' ', strlen("ir tx ")) + 1;
+      if (addressIndex == 0) return false;
+
+      int commandIndex = cmd_str.indexOf(' ', addressIndex) + 1;
+      if (commandIndex == 0) return false;
+
+      String protocolStr = cmd_str.substring(strlen("ir tx "), addressIndex - 1);
+      String address = cmd_str.substring(addressIndex, commandIndex - 1);
+      String command = cmd_str.substring(commandIndex);
+
+      IRCode code;
+      code.protocol = protocolStr;
+      code.address = address;
+      code.command = command;
+
+      sendIRCommand(&code, true);
+
+      return true;
+    }
 
     if(cmd_str.startsWith("ir tx_from_file ")){
       // example: ir tx_from_file LG_AKB72915206_power.ir
