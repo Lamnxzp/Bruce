@@ -183,6 +183,10 @@ void displayTextLine(String txt, bool waitKeyPress) {
   while(waitKeyPress && !check(AnyKeyPress)) delay(100);
 }
 
+void clearStripe() {
+  tft.fillRect(10, tftHeight/2-13, tftWidth-20, 26, bruceConfig.bgColor);
+}
+
 
 void setPadCursor(int16_t padx, int16_t pady) {
   for (int y=0; y<pady; y++) tft.println();
@@ -418,13 +422,26 @@ int loopOptions(std::vector<Option>& options, bool bright, bool submenu, String 
 ** Description:   Função para manipular o progresso da atualização
 ** Dependencia: prog_handler =>>    0 - Flash, 1 - LittleFS
 ***************************************************************************************/
-void progressHandler(int progress, size_t total, String message) {
+/**
+ * @brief Handles the display of a progress bar.
+ *
+ * @param progress Current progress, as an integer ranging from 0 to the total.
+ * @param total The total amount to be completed, representing 100% of the progress.
+ * @param message The message to be displayed along with the progress bar.
+ * @param redrawText Whether the message text should be redrawn.
+ */
+void progressHandler(int progress, size_t total, String message, bool redrawText) {
   int barWidth = map(progress, 0, total, 0, 200);
-  if(barWidth <3) {
+
+  if(barWidth < 3) {
     tft.fillRect(6, 27, tftWidth-12, tftHeight-33, bruceConfig.bgColor);
     tft.drawRect(18, tftHeight - 47, 204, 17, bruceConfig.priColor);
+  }
+
+  if (redrawText || barWidth < 3) {
     displayRedStripe(message, TFT_WHITE, bruceConfig.priColor);
   }
+
   tft.fillRect(20, tftHeight - 45, barWidth, 13, bruceConfig.priColor);
 }
 

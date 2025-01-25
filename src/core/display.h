@@ -103,6 +103,7 @@ void displayWarning(String txt, bool waitKeyPress = false);   // Yellow Stripe
 void displayInfo(String txt, bool waitKeyPress = false);      // Blue Stripe
 void displaySuccess(String txt, bool waitKeyPress = false);   // Green Strupe
 void displayTextLine(String txt, bool waitKeyPress = false); // UI Colored stripe
+void clearStripe();
 void setPadCursor(int16_t padx=1, int16_t pady=0);
 
 void padprintf(int16_t padx, const char *format, ...);
@@ -151,7 +152,7 @@ Opt_Coord listFiles(int index, std::vector<FileList> fileList);
 
 void drawWireguardStatus(int x, int y);
 
-void progressHandler(int progress, size_t total, String message = "Running, Wait");
+void progressHandler(int progress, size_t total, String message = "Running, Wait", bool redrawText = false);
 
 int getBattery() __attribute__((weak));
 

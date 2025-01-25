@@ -7,8 +7,46 @@
 #include <globals.h>
 
 
+struct IRCode {
+  IRCode(
+    String protocol="",
+    String address="",
+    String command="",
+    String data="",
+    uint8_t bits=32
+  ) : protocol(protocol),
+      address(address),
+      command(command),
+      data(data),
+      bits(bits) { }
 
-// custom Ir
+  IRCode(IRCode *code) {
+    name = String(code->name);
+    type = String(code->type);
+    protocol = String(code->protocol);
+    address = String(code->address);
+    command = String(code->command);
+    frequency = code->frequency;
+    bits = code->bits;
+    // duty_cycle = code->duty_cycle;
+    data = String(code->data);
+    filepath = String(code->filepath);
+  }
+
+  String name="";
+  String type="";
+  String protocol="";
+  String address="";
+  String command="";
+  uint16_t frequency=0;
+  uint8_t bits=32;
+  //float duty_cycle;
+  String data="";
+  String filepath="";
+};
+
+// Custom IR
+bool sendIRCommand(IRCode *code, bool silent = false);
 void sendRawCommand(uint16_t frequency, String rawData);
 void sendNECCommand(String address, String command);
 void sendNECextCommand(String address, String command);

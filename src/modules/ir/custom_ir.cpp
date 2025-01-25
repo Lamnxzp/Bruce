@@ -7,47 +7,19 @@
 #include "TV-B-Gone.h" // for checkIrTxPin()
 #include <IRutils.h>
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Custom IR
 
-struct IRCode {
-  IRCode(
-    String protocol="",
-    String address="",
-    String command="",
-    String data="",
-    uint8_t bits=32
-  ) : protocol(protocol),
-      address(address),
-      command(command),
-      data(data),
-      bits(bits) { }
+uint16_t reverseEndianness16(uint16_t value) {
+    return (value >> 8) | (value << 8);
+}
 
-  IRCode(IRCode *code) {
-    name = String(code->name);
-    type = String(code->type);
-    protocol = String(code->protocol);
-    address = String(code->address);
-    command = String(code->command);
-    frequency = code->frequency;
-    bits = code->bits;
-    // duty_cycle = code->duty_cycle;
-    data = String(code->data);
-    filepath = String(code->filepath);
-  }
-
-  String name="";
-  String type="";
-  String protocol="";
-  String address="";
-  String command="";
-  uint16_t frequency=0;
-  uint8_t bits=32;
-  //float duty_cycle;
-  String data="";
-  String filepath="";
-};
+uint32_t reverseEndianness32(uint32_t value) {
+    return (value >> 24) |
+           ((value << 8) & 0x00FF0000) |
+           ((value >> 8) & 0x0000FF00) |
+           (value << 24);
+}
 
 static std::vector<IRCode*> codes;
 
@@ -79,9 +51,8 @@ void addToRecentCodes(IRCode *ircode)  {
     }
 }
 
-void sendIRCommand(IRCode *code);
-
 void selectRecentIrMenu() {
+    drawMainBorder();
     // show menu with filenames
     checkIrTxPin();
     options = { };
@@ -99,6 +70,7 @@ void selectRecentIrMenu() {
       idx = loopOptions(options, idx);
       if (selected_code != NULL) {
         sendIRCommand(selected_code);
+        clearStripe();
         selected_code = NULL;
       }
       if(check(EscPress) || exit) break;
@@ -108,6 +80,7 @@ void selectRecentIrMenu() {
 }
 
 bool txIrFile(FS *fs, String filepath) {
+  drawMainBorder();
   // SPAM all codes of the file
 
   int total_codes = 0;
@@ -145,20 +118,21 @@ bool txIrFile(FS *fs, String filepath) {
   }
 
   Serial.printf("\nStarted SPAM all codes with: %d codes", total_codes);
-  // comes back to first position, beggining of the file
+  // comes back to first position, beginning of the file
   databaseFile.seek(0);
+  delay(20);
+  progressHandler(0, total_codes, "Sent 0/" + String(total_codes));
+
   while (databaseFile.available()) {
-    progressHandler(codes_sent,total_codes);
     line = databaseFile.readStringUntil('\n');
     if (line.endsWith("\r")) line.remove(line.length() - 1);
 
     if (line.startsWith("type:")) {
       codes_sent++;
+
       String type = line.substring(5);
       type.trim();
-      Serial.println("Type: "+type);
       if (type == "raw") {
-        Serial.println("RAW code");
         while (databaseFile.available()) {
           line = databaseFile.readStringUntil('\n');
           if (line.endsWith("\r")) line.remove(line.length() - 1);
@@ -167,11 +141,9 @@ bool txIrFile(FS *fs, String filepath) {
             line = line.substring(10);
             line.trim();
             frequency = line.toInt();
-            Serial.printf("Frequency: %d\n", frequency);
           } else if (line.startsWith("data:")) {
             rawData = line.substring(5);
             rawData.trim();
-            Serial.println("RawData: "+rawData);
           } else if ((frequency != 0 && rawData != "") || line.startsWith("#")) {
             sendRawCommand(frequency, rawData);
             rawData = "";
@@ -182,7 +154,6 @@ bool txIrFile(FS *fs, String filepath) {
           }
         }
       } else if (type == "parsed") {
-        Serial.println("PARSED");
         while (databaseFile.available()) {
           line = databaseFile.readStringUntil('\n');
           if (line.endsWith("\r")) line.remove(line.length() - 1);
@@ -190,26 +161,20 @@ bool txIrFile(FS *fs, String filepath) {
           if (line.startsWith("protocol:")) {
             protocol = line.substring(9);
             protocol.trim();
-            Serial.println("Protocol: "+protocol);
           } else if (line.startsWith("address:")) {
             address = line.substring(8);
             address.trim();
-            Serial.println("Address: "+address);
           } else if (line.startsWith("command:")) {
             command = line.substring(8);
             command.trim();
-            Serial.println("Command: "+command);
           } else if (line.startsWith("value:") || line.startsWith("state:")) {
             value = line.substring(6);
             value.trim();
-            Serial.println("Value: "+value);
           } else if (line.startsWith("bits:")) {
             bits = line.substring(strlen("bits:")).toInt();
-            Serial.println("bits: "+bits);
           } else if (line.indexOf("#") != -1) {  // TODO: also detect EOF
-            // https://developer.flipper.net/flipperzero/doxygen/infrared_file_format.html
             IRCode code(protocol, address, command, value, bits);
-            sendIRCommand(&code);
+            sendIRCommand(&code, true); // silent mode
 
             protocol = "";
             address = "";
@@ -222,9 +187,11 @@ bool txIrFile(FS *fs, String filepath) {
           }
         }
       }
+
+      progressHandler(codes_sent,total_codes, "Sent " + String(codes_sent) + "/" + String(total_codes), true);
     }
     // if user is pushing (holding down) TRIGGER button, stop transmission early
-    if (check(SelPress)) // Pause TV-B-Gone
+    if (check(SelPress)) // Pause Custom IR Spam
     {
       while (check(SelPress)) yield();
       displayTextLine("Paused");
@@ -238,19 +205,20 @@ bool txIrFile(FS *fs, String filepath) {
       while (check(SelPress)){
         yield();
       }
-      if (endingEarly) break; // Cancels  custom IR Spam
-      displayTextLine("Running, Wait");
+      if (endingEarly) break; // Cancels Custom IR Spam
     }
   } // end while file has lines to process
   databaseFile.close();
-  Serial.println("closed");
-  Serial.println("EXTRA finished");
+
+  if (!endingEarly) {
+    drawMainBorder(); // clear progress bar
+    displaySuccess("Sent " + String(codes_sent) + " codes", true);
+  }
 
   resetCodesArray();
   digitalWrite(bruceConfig.irTx, LED_OFF);
   return true;
 }
-
 
 void otherIRcodes() {
   checkIrTxPin();
@@ -263,11 +231,17 @@ void otherIRcodes() {
   returnToMenu = true;  // make sure menu is redrawn when quitting in any point
 
   options = {
-      {"Recent", [&]()  { selectRecentIrMenu(); }},
       {"LittleFS", [&]()   { fs=&LittleFS; }},
       {"Menu", []()   { }},
   };
-  if(setupSdCard()) options.push_back({"SD Card", [&]()  { fs=&SD; }});
+  if(setupSdCard()) {
+    options.insert(options.begin() + 1, {"SD Card", [&]()  { fs=&SD; }});
+  }
+  if (recent_ircodes.size() > 0) {
+    options.insert(options.end() - 1, {"Recent",  [&]() {
+      selectRecentIrMenu();
+    }});
+  }
 
   loopOptions(options);
 
@@ -350,9 +324,8 @@ void otherIRcodes() {
   }
   options = { };
   for(auto code : codes) {
-    // https://developer.flipper.net/flipperzero/doxygen/infrared_file_format.html
     if (code->name != "") {
-      options.push_back({ code->name.c_str(), [code](){ sendIRCommand(code); addToRecentCodes(code); }});
+      options.push_back({ code->name.c_str(), [code](){ sendIRCommand(code); clearStripe(); addToRecentCodes(code); }});
     }
   }
   options.push_back({ "Main Menu" , [&](){ exit=true; }});
@@ -369,22 +342,65 @@ void otherIRcodes() {
 
 // IR commands
 
-void sendIRCommand(IRCode *code) {
-  if(code->type=="raw")  sendRawCommand(code->frequency, code->data);
-  else if(code->protocol=="NEC") sendNECCommand(code->address, code->command);
-  else if(code->protocol=="NECext") sendNECextCommand(code->address, code->command);
-  else if(code->protocol=="RC5"||code->protocol=="RC5X") sendRC5Command(code->address, code->command);
-  else if(code->protocol=="RC6") sendRC6Command(code->address, code->command);
-  else if(code->protocol=="Samsung32") sendSamsungCommand(code->address, code->command);
-  else if(code->protocol.startsWith("SIRC")) sendSonyCommand(code->address, code->command);
-  else if(code->protocol=="Kaseikyo" || code->protocol=="Panasonic") sendPanasonicCommand(code->address, code->command);
-  else if(code->protocol!="") sendDecodedCommand(code->protocol, code->data, code->bits);
+bool sendIRCommand(IRCode *code, bool silent) {
+  if (code == nullptr) {
+    return false;
+  }
+
+  // https://developer.flipper.net/flipperzero/doxygen/infrared_file_format.html
+  if (code->type.equalsIgnoreCase("raw")) {
+    if (!silent) displayTextLine("Sending...");
+    sendRawCommand(code->frequency, code->data);
+    return true;
+  } else if (code->protocol.equalsIgnoreCase("NEC")) {
+    if (!silent) displayTextLine("Sending...");
+    sendNECCommand(code->address, code->command);
+    return true;
+  } else if (code->protocol.equalsIgnoreCase("NECext")) {
+    if (!silent) displayTextLine("Sending...");
+    sendNECextCommand(code->address, code->command);
+    return true;
+  } else if (
+    code->protocol.equalsIgnoreCase("RC5") ||
+    code->protocol.equalsIgnoreCase("RC5X"))
+  {
+    if (!silent) displayTextLine("Sending...");
+    sendRC5Command(code->address, code->command);
+    return true;
+  } else if (code->protocol.equalsIgnoreCase("RC6")) {
+    if (!silent) displayTextLine("Sending...");
+    sendRC6Command(code->address, code->command);
+    return true;
+  } else if (code->protocol.equalsIgnoreCase("Samsung32")) {
+    if (!silent) displayTextLine("Sending...");
+    sendSamsungCommand(code->address, code->command);
+    return true;
+  } else if (
+    code->protocol.equalsIgnoreCase("SIRC") ||
+    code->protocol.equalsIgnoreCase("SIRC15") ||
+    code->protocol.equalsIgnoreCase("SIRC20"))
+  {
+    if (!silent) displayTextLine("Sending...");
+    sendSonyCommand(code->address, code->command);
+    return true;
+  } else if (code->protocol == "Kaseikyo") {
+    if (!silent) displayTextLine("Sending...");
+    sendPanasonicCommand(code->address, code->command);
+    return true;
+  }
+  // Others protocols of IRRemoteESP8266, not related to Flipper Zero IR File Format
+  else if (code->protocol != "" && code->data != "" && strToDecodeType(code->protocol.c_str()) != decode_type_t::UNKNOWN) {
+    if (!silent) displayTextLine("Sending...");
+    sendDecodedCommand(code->protocol, code->data, code->bits);
+    return true;
+  }
+  
+  return false; // Unknown protocol
 }
 
 void sendNECCommand(String address, String command) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   uint16_t addressValue = strtoul(address.substring(0,2).c_str(), nullptr, 16);
   uint16_t commandValue = strtoul(command.substring(0,2).c_str(), nullptr, 16);
   uint64_t data = irsend.encodeNEC(addressValue, commandValue);
@@ -396,7 +412,6 @@ void sendNECCommand(String address, String command) {
 void sendNECextCommand(String address, String command) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   
   uint8_t first_zero_byte_pos = address.indexOf("00", 2);
   if(first_zero_byte_pos!=-1) address = address.substring(0, first_zero_byte_pos);
@@ -410,8 +425,8 @@ void sendNECextCommand(String address, String command) {
   uint16_t commandValue = strtoul(command.c_str(), nullptr, 16);
 
   // Invert Endianness
-  uint16_t newAddress = (addressValue >> 8) | (addressValue << 8);
-  uint16_t newCommand = (commandValue >> 8) | (commandValue << 8);
+  uint16_t newAddress = reverseEndianness16(addressValue);
+  uint16_t newCommand = reverseEndianness16(commandValue);
 
   // NEC protocol bit order is LSB first
   uint16_t lsbAddress = reverseBits(newAddress, 16);
@@ -426,7 +441,6 @@ void sendNECextCommand(String address, String command) {
 void sendRC5Command(String address, String command) {
   IRsend irsend(bruceConfig.irTx,true);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   uint8_t addressValue = strtoul(address.substring(0,2).c_str(), nullptr, 16);
   uint8_t commandValue = strtoul(command.substring(0,2).c_str(), nullptr, 16);
   uint16_t data = irsend.encodeRC5(addressValue, commandValue);
@@ -438,7 +452,6 @@ void sendRC5Command(String address, String command) {
 void sendRC6Command(String address, String command) {
   IRsend irsend(bruceConfig.irTx,true);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   address.replace(" ", "");
   command.replace(" ", "");
   uint32_t addressValue = strtoul(address.substring(0,2).c_str(), nullptr, 16);
@@ -452,7 +465,6 @@ void sendRC6Command(String address, String command) {
 void sendSamsungCommand(String address, String command) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   uint8_t addressValue = strtoul(address.substring(0,2).c_str(), nullptr, 16);
   uint8_t commandValue = strtoul(command.substring(0,2).c_str(), nullptr, 16);
   uint64_t data = irsend.encodeSAMSUNG(addressValue, commandValue);
@@ -465,7 +477,6 @@ void sendSamsungCommand(String address, String command) {
 void sendSonyCommand(String address, String command) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
   uint16_t commandValue = strtoul(command.substring(0,2).c_str(), nullptr, 16);
   uint16_t addressValue = strtoul(address.substring(0,2).c_str(), nullptr, 16);
   uint16_t addressValue2 = strtoul(address.substring(3,6).c_str(), nullptr, 16);
@@ -522,7 +533,6 @@ bool sendDecodedCommand(String protocol, String value, uint8_t bits) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
   bool success = false;
-  displayTextLine("Sending..");
 
   if(hasACState(type)) {
     // need to send the state (still passed from value)
@@ -554,7 +564,6 @@ bool sendDecodedCommand(String protocol, String value, uint8_t bits) {
 void sendRawCommand(uint16_t frequency, String rawData) {
   IRsend irsend(bruceConfig.irTx);  // Set the GPIO to be used to sending the message.
   irsend.begin();
-  displayTextLine("Sending..");
 
   uint16_t dataBufferSize = 1;
   for (int i=0; i < rawData.length(); i++) {
