@@ -383,7 +383,7 @@ bool sendIRCommand(IRCode *code, bool silent) {
     if (!silent) displayTextLine("Sending...");
     sendSonyCommand(code->address, code->command);
     return true;
-  } else if (code->protocol == "Kaseikyo") {
+  } else if (code->protocol.equalsIgnoreCase("Kaseikyo")) {
     if (!silent) displayTextLine("Sending...");
     sendPanasonicCommand(code->address, code->command);
     return true;
